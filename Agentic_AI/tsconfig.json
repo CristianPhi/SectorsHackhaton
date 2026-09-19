@@ -11,6 +11,19 @@
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "target": "ES2023",
+    "rootDir": "..",
+    "baseUrl": ".",
+    "paths": {
+      "@nestjs/common": ["./node_modules/@nestjs/common"],
+      "@nestjs/config": ["./node_modules/@nestjs/config"],
+      "@nestjs/core": ["./node_modules/@nestjs/core"],
+      "@nestjs/mongoose": ["./node_modules/@nestjs/mongoose"],
+      "@nestjs/platform-express": ["./node_modules/@nestjs/platform-express"],
+      "axios": ["./node_modules/axios"],
+      "reflect-metadata": ["./node_modules/reflect-metadata"],
+      "@broker/*": ["../broker/*"]
+    },
+    "ignoreDeprecations": "6.0",
     "types": ["node", "jest"],
     "sourceMap": true,
     "outDir": "./dist",
@@ -18,5 +31,6 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false
-  }
+  },
+  "include": ["src/**/*.ts", "../broker/**/*.ts"]
 }

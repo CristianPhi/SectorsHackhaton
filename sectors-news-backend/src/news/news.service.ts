@@ -18,7 +18,7 @@ export class NewsService {
       'SECTORS_BASE_URL',
       'https://api.sectors.app/v2',
     );
-    this.apiKey = this.configService.get<string>('10beec4cd90733441adca1d67c36f68787971453b6af5f0709c83a533a90949d', '');
+    this.apiKey = this.configService.get<string>('SECTORS_API_KEY', '');
   }
 
   async getMarketNews(symbol?: string, page: number = 1): Promise<any> {
@@ -39,7 +39,7 @@ export class NewsService {
           headers: {
             Authorization: this.apiKey,
           },
-          params: { page },
+          params: { limit: 20, offset: Math.max(0, (page - 1) * 20) },
           timeout: 10000,
         }),
       );
