@@ -23,12 +23,29 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Backend Stockwise berbasis NestJS dengan koneksi MongoDB dan endpoint autentikasi user.
 
 ## Project setup
 
 ```bash
-$ npm install
+npm install
+copy .env.example .env
+```
+
+Isi `MONGODB_URI` di `.env` dengan connection string MongoDB Atlas kamu. Format yang disarankan:
+
+```env
+MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@CLUSTER.mongodb.net/stockwise?retryWrites=true&w=majority
+SECTORS_API_KEY=your-sectors-api-key
+```
+
+`SECTORS_API_KEY` diperlukan untuk menampilkan harga penutupan harian saham dan indeks IHSG dari Sectors Financial API.
+
+Jangan commit file `.env`. Endpoint yang tersedia:
+
+```text
+POST /auth/register  { "name": "Cristian", "email": "user@example.com", "password": "minimal6" }
+POST /auth/login     { "email": "user@example.com", "password": "minimal6" }
 ```
 
 ## Compile and run the project
