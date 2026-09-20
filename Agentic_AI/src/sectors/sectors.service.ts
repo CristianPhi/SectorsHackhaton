@@ -1,6 +1,26 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import axios from 'axios';
 
+export type CompanyValuationInput = {
+  price?: number | null;
+  eps?: number | null;
+  bookValue?: number | null;
+};
+
+export type ScreenerStockRow = {
+  symbol: string;
+  name?: string;
+  price?: number | null;
+  change?: number | null;
+  transactionCount?: number | null;
+  volume?: number | null;
+  value?: number | null;
+  peRatio?: number | null;
+  pbv?: number | null;
+  isCheap?: boolean;
+  valuationScore?: number;
+};
+
 @Injectable()
 export class SectorsService {
   private readonly baseUrl = 'https://api.sectors.app/v2';
@@ -90,13 +110,164 @@ export class SectorsService {
       throw new ServiceUnavailableException('SECTORS_API_KEY belum diatur di file .env');
     }
 
-    const [companies, mostTraded, commodities] = await Promise.all([
+    const [companies, mostTraded, commodities, screener] = await Promise.all([
       this.getCompanies(query),
       this.getMostTraded(),
       this.getCommodityPrices(),
+      this.getScreenerData({ q: query }),
     ]);
 
-    return { companies, mostTraded, commodities, source: 'Sectors Financial API' };
+    const trending = this.sortStocksByTransaction(screener);
+
+    return {
+      companies,
+      mostTraded,
+      commodities,
+      screener,
+      trending,
+      source: 'Sectors Financial API',
+    };
+  }
+
+  async getScreenerData(filters: {
+    q?: string;
+    maxPe?: number;
+    minPe?: number;
+    maxPbv?: number;
+    minPbv?: number;
+    minTransaction?: number;
+    minRoe?: number;
+    maxRoe?: number;
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: 'transaction' | 'valuation' | 'price';
+  } = {}) {
+    const query = filters.q ?? '';
+    const baseRows = await this.getCompanies(query);
+
+    const rows = await Promise.all(
+      baseRows.map(async (row) => {
+        const symbol = String(row.symbol ?? '').replace('.JK', '');
+        if (!symbol) return null;
+
+        const report = await this.getCompanyReport(symbol);
+        const detail = await this.getLatestDaily(symbol);
+        const roe = this.extractReportNumber(report, ['roe', 'return_on_equity', 'roa', 'roe_percent']);
+        const valuation = this.calculateValuationMetrics({
+          price: detail.price,
+          eps: this.extractReportNumber(report, ['eps', 'earnings_per_share', 'eps_basic', 'basic_eps']),
+          bookValue: this.extractReportNumber(report, ['book_value', 'bookValue', 'equity_per_share', 'bvps']),
+        });
+        const [volume, value] = await Promise.all([
+          this.getLatestVolume(symbol),
+          this.getLatestValue(symbol),
+        ]);
+        const transactionCount = this.normalizeTransactionCountFromRows(await this.getDailyHistory(symbol));
+        const stockName = typeof row.name === 'string' ? row.name : String(row.symbol ?? 'Unknown company');
+
+        return {
+          symbol,
+          name: stockName,
+          price: detail.price,
+          change: detail.change,
+          transactionCount,
+          volume,
+          value,
+          peRatio: valuation.peRatio,
+          pbv: valuation.pbv,
+          roe,
+          isCheap: valuation.isCheap,
+          valuationScore: valuation.valuationScore,
+          trendingRank: null,
+        } as ScreenerStockRow & { roe?: number | null; trendingRank: number | null };
+      }),
+    );
+
+    const filtered = rows.filter((row): row is ScreenerStockRow & { roe?: number | null; trendingRank: number | null } => !!row) as (ScreenerStockRow & { roe?: number | null; trendingRank: number | null })[];
+
+    const withFilters = filtered.filter((row) => {
+      const minPeOkay = typeof filters.minPe === 'number' ? (row.peRatio == null || row.peRatio >= filters.minPe) : true;
+      const maxPeOkay = typeof filters.maxPe === 'number' ? (row.peRatio == null || row.peRatio <= filters.maxPe) : true;
+      const minPbvOkay = typeof filters.minPbv === 'number' ? (row.pbv == null || row.pbv >= filters.minPbv) : true;
+      const maxPbvOkay = typeof filters.maxPbv === 'number' ? (row.pbv == null || row.pbv <= filters.maxPbv) : true;
+      const minRoeOkay = typeof filters.minRoe === 'number' ? (row.roe == null || row.roe >= filters.minRoe) : true;
+      const maxRoeOkay = typeof filters.maxRoe === 'number' ? (row.roe == null || row.roe <= filters.maxRoe) : true;
+      const minTransactionOkay = typeof filters.minTransaction === 'number' ? (row.transactionCount ?? 0) >= filters.minTransaction : true;
+      const minPriceOkay = typeof filters.minPrice === 'number' ? (row.price ?? 0) >= filters.minPrice : true;
+      const maxPriceOkay = typeof filters.maxPrice === 'number' ? (row.price ?? 0) <= filters.maxPrice : true;
+      return minPeOkay && maxPeOkay && minPbvOkay && maxPbvOkay && minRoeOkay && maxRoeOkay && minTransactionOkay && minPriceOkay && maxPriceOkay;
+    });
+
+    const sorted = [...withFilters].sort((a, b) => {
+      if (filters.sortBy === 'valuation') {
+        return (b.valuationScore ?? 0) - (a.valuationScore ?? 0);
+      }
+      if (filters.sortBy === 'price') {
+        return (b.price ?? 0) - (a.price ?? 0);
+      }
+      return (b.transactionCount ?? 0) - (a.transactionCount ?? 0);
+    });
+
+    return sorted.map((row, index) => ({
+      ...row,
+      trendingRank: index + 1,
+    }));
+  }
+
+  async getTrendingStocks(options: { limit?: number; minTransaction?: number } = {}) {
+    const limit = options.limit ?? 10;
+    const minTransaction = options.minTransaction ?? 0;
+    const screener = await this.getScreenerData({ minTransaction, sortBy: 'transaction' });
+    return screener.slice(0, limit).map((stock, index) => ({
+      ...stock,
+      trendingRank: index + 1,
+    }));
+  }
+
+  async getStockTransactions(symbol: string) {
+    const cleanSymbol = symbol.toUpperCase().replace('.JK', '');
+    const history = await this.getDailyHistory(cleanSymbol);
+    const normalized = history.map((row) => ({
+      date: row.date ?? null,
+      close: row.close ?? null,
+      volume: row.volume ?? null,
+      value: row.value ?? null,
+      transactionCount: this.normalizeTransactionCountFromRows([row]),
+    }));
+
+    const summary = normalized.at(-1) ?? null;
+    return {
+      symbol: cleanSymbol,
+      totalTransactions: summary?.transactionCount ?? null,
+      latestDate: summary?.date ?? null,
+      history: normalized,
+      source: 'Sectors Financial API',
+    };
+  }
+
+  calculateValuationMetrics(input: CompanyValuationInput) {
+    const price = Number(input.price ?? 0);
+    const eps = Number(input.eps ?? 0);
+    const bookValue = Number(input.bookValue ?? 0);
+
+    const peRatio = eps > 0 ? price / eps : null;
+    const pbv = bookValue > 0 ? price / bookValue : null;
+    const isCheap = (peRatio == null || peRatio <= 15) && (pbv == null || pbv <= 1.5);
+
+    const valuationScore = Number(
+      ((peRatio != null ? Math.max(0, 15 - peRatio) : 0) + (pbv != null ? Math.max(0, 1.5 - pbv) : 0)) * 100,
+    );
+
+    return {
+      peRatio,
+      pbv,
+      isCheap,
+      valuationScore: Number.isFinite(valuationScore) ? valuationScore : 0,
+    };
+  }
+
+  sortStocksByTransaction<T extends { transactionCount?: number | null }>(rows: T[]) {
+    return [...rows].sort((a, b) => (b.transactionCount ?? 0) - (a.transactionCount ?? 0));
   }
 
   async getStockDetail(symbol: string) {
@@ -173,6 +344,81 @@ export class SectorsService {
     } catch {
       return { price: null, change: null };
     }
+  }
+
+  private async getDailyHistory(symbol: string) {
+    try {
+      const response = await axios.get(`${this.baseUrl}/daily/${symbol}/`, { headers: this.headers });
+      return Array.isArray(response.data) ? response.data : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private normalizeTransactionCountFromRows(rows: Array<Record<string, unknown>>): number | null {
+    const latest = rows.at(-1) as Record<string, unknown> | undefined;
+    if (!latest) return null;
+
+    const candidates = [
+      latest.totalTransaction,
+      latest.totalTransactions,
+      latest.transaction,
+      latest.trades,
+      latest.totalTrades,
+      latest.frequency,
+      latest.volume,
+    ];
+
+    for (const value of candidates) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  private async getLatestVolume(symbol: string): Promise<number | null> {
+    return this.getLatestMetric(symbol, 'volume');
+  }
+
+  private async getLatestValue(symbol: string): Promise<number | null> {
+    return this.getLatestMetric(symbol, 'value');
+  }
+
+  private async getLatestMetric(symbol: string, field: 'volume' | 'value'): Promise<number | null> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/daily/${symbol}/`, { headers: this.headers });
+      const rows = Array.isArray(response.data) ? response.data : [];
+      const latest = rows.at(-1) as Record<string, unknown> | undefined;
+      if (!latest) return null;
+      const value = Number(latest[field]);
+      return Number.isFinite(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async getCompanyReport(symbol: string): Promise<Record<string, unknown>> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/company/report/${symbol}/`, { headers: this.headers });
+      return response.data && typeof response.data === 'object' ? (response.data as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private extractReportNumber(report: Record<string, unknown>, keys: string[]): number | null {
+    for (const key of keys) {
+      const value = report[key] ?? report[key.toLowerCase()] ?? report[key.toUpperCase()];
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    return null;
   }
 
   private async getMostTraded() {

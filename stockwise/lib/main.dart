@@ -814,7 +814,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 14),
             SizedBox(
-              height: 218,
+              height: 180,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: _educationVideos.length,
@@ -842,7 +842,7 @@ class _EducationVideoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 274,
+    width: 220,
     child: InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: _openVideo,
@@ -857,18 +857,18 @@ class _EducationVideoCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              height: 112,
+              height: 86,
               color: video.color,
               child: Stack(
                 children: [
                   Positioned(
-                    left: 16,
-                    top: 14,
+                    left: 12,
+                    top: 10,
                     child: Text(
                       video.topic,
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1,
                       ),
@@ -876,12 +876,12 @@ class _EducationVideoCard extends StatelessWidget {
                   ),
                   const Center(
                     child: CircleAvatar(
-                      radius: 24,
+                      radius: 18,
                       backgroundColor: Colors.white24,
                       child: Icon(
                         Icons.play_arrow_rounded,
                         color: Colors.white,
-                        size: 30,
+                        size: 22,
                       ),
                     ),
                   ),
@@ -889,7 +889,7 @@ class _EducationVideoCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -901,19 +901,20 @@ class _EducationVideoCard extends StatelessWidget {
                       color: _ink,
                       fontWeight: FontWeight.bold,
                       height: 1.2,
+                      fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 6),
                   Text(
                     video.source,
-                    style: const TextStyle(color: _muted, fontSize: 12),
+                    style: const TextStyle(color: _muted, fontSize: 11),
                   ),
                   const SizedBox(height: 5),
                   Row(
                     children: [
                       const Icon(
                         Icons.visibility_outlined,
-                        size: 14,
+                        size: 12,
                         color: _green,
                       ),
                       const SizedBox(width: 4),
@@ -921,14 +922,14 @@ class _EducationVideoCard extends StatelessWidget {
                         video.views,
                         style: const TextStyle(
                           color: _green,
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const Spacer(),
                       const Icon(
                         Icons.open_in_new_rounded,
-                        size: 14,
+                        size: 12,
                         color: _muted,
                       ),
                     ],
