@@ -18,8 +18,11 @@ import { BrokerService } from '@broker/broker.service';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const configuredUri = configService.getOrThrow<string>('MONGODB_URI').trim();
+        const configuredUri = (configService.get<string>('MONGODB_URI') ?? '').trim();
         const uri = configuredUri.replace(/^MONGODB_URI=/, '');
+        if (!uri) {
+          throw new Error('MONGODB_URI belum diatur di file .env');
+        }
         return { uri };
       },
     }),

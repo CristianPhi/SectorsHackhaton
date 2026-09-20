@@ -70,8 +70,9 @@ class MarketApi {
       queryParameters: query.trim().isEmpty ? null : {'q': query.trim()},
     );
     final response = await http.get(uri);
-    if (response.statusCode >= 400)
+    if (response.statusCode >= 400) {
       throw Exception('Gagal mengambil data pencarian');
+    }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
@@ -79,8 +80,9 @@ class MarketApi {
     final response = await http.get(
       Uri.parse('$_agentBaseUrl/sectors/stocks/$symbol'),
     );
-    if (response.statusCode >= 400)
+    if (response.statusCode >= 400) {
       throw Exception('Gagal mengambil detail saham');
+    }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
@@ -88,8 +90,9 @@ class MarketApi {
     final response = await http.get(
       Uri.parse('$_agentBaseUrl/sectors/stocks/$symbol/quote'),
     );
-    if (response.statusCode >= 400)
+    if (response.statusCode >= 400) {
       throw Exception('Gagal mengambil quote saham');
+    }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
@@ -97,14 +100,17 @@ class MarketApi {
     final response = await http.get(
       Uri.parse('$_agentBaseUrl/broker/summary/$symbol'),
     );
-    if (response.statusCode >= 400)
+    if (response.statusCode >= 400) {
       throw Exception('Gagal mengambil broker summary');
+    }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   static Future<Map<String, String>> getBrokerNames() async {
     final response = await http.get(Uri.parse('$_agentBaseUrl/broker/brokers'));
-    if (response.statusCode >= 400) return {};
+    if (response.statusCode >= 400) {
+      return {};
+    }
     final rows = jsonDecode(response.body) as List<dynamic>? ?? const [];
     final map = <String, String>{};
     for (final row in rows) {
@@ -187,8 +193,7 @@ const _educationVideos = [
     topic: 'FUNDAMENTAL',
     source: 'Aswath Damodaran',
     views: '500K+ views',
-    url:
-        'https://www.youtube.com/results?search_query=Aswath+Damodaran+DCF+valuation',
+    url: 'https://www.youtube.com/@AswathDamodaran',
     color: Color(0xFF1F6F4A),
   ),
   EducationVideo(
@@ -196,8 +201,7 @@ const _educationVideos = [
     topic: 'TECHNICAL',
     source: 'Rayner Teo',
     views: '500K+ views',
-    url:
-        'https://www.youtube.com/results?search_query=Rayner+Teo+technical+analysis+for+beginners',
+    url: 'https://www.youtube.com/@raynertv',
     color: Color(0xFF315B89),
   ),
   EducationVideo(
@@ -205,8 +209,7 @@ const _educationVideos = [
     topic: 'RISK MANAGEMENT',
     source: 'The Plain Bagel',
     views: '500K+ views',
-    url:
-        'https://www.youtube.com/results?search_query=The+Plain+Bagel+investment+risk+diversification',
+    url: 'https://www.youtube.com/@ThePlainBagel',
     color: Color(0xFF805C31),
   ),
 ];
@@ -836,8 +839,9 @@ class _EducationVideoCard extends StatelessWidget {
 
   Future<void> _openVideo() async {
     final uri = Uri.parse(video.url);
-    if (await canLaunchUrl(uri))
+    if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override
@@ -1019,18 +1023,20 @@ class _SearchScreenState extends State<SearchScreen> {
         FutureBuilder<Map<String, dynamic>>(
           future: _searchFuture,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting)
+            if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(
                 child: Padding(
                   padding: EdgeInsets.all(28),
                   child: CircularProgressIndicator(color: _green),
                 ),
               );
-            if (snapshot.hasError)
+            }
+            if (snapshot.hasError) {
               return const _SearchMessage(
                 text:
                     'Data API belum tersedia. Pastikan backend dan SECTORS_API_KEY aktif.',
               );
+            }
             final payload = snapshot.data!;
             if (_mode == 'commodities') {
               final rows = (payload['commodities'] as List<dynamic>? ?? [])
@@ -1196,11 +1202,15 @@ class _CommodityTile extends StatelessWidget {
 
 String _formatVolume(dynamic value) {
   final volume = (value as num?)?.toDouble();
-  if (volume == null) return '--';
-  if (volume >= 1000000000)
+  if (volume == null) {
+    return '--';
+  }
+  if (volume >= 1000000000) {
     return '${(volume / 1000000000).toStringAsFixed(1)}B shares';
-  if (volume >= 1000000)
+  }
+  if (volume >= 1000000) {
     return '${(volume / 1000000).toStringAsFixed(1)}M shares';
+  }
   return '${volume.toStringAsFixed(0)} shares';
 }
 
@@ -1678,9 +1688,10 @@ class _NewsScreenState extends State<NewsScreen> {
     child: FutureBuilder<List<NewsItem>>(
       future: _newsFuture,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting)
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: _green));
-        if (snapshot.hasError)
+        }
+        if (snapshot.hasError) {
           return const Center(
             child: Padding(
               padding: EdgeInsets.all(24),
@@ -1691,6 +1702,7 @@ class _NewsScreenState extends State<NewsScreen> {
               ),
             ),
           );
+        }
         final news = snapshot.data ?? [];
         final sectors = [
           'Semua',
@@ -1759,8 +1771,9 @@ class _LiveNewsCard extends StatelessWidget {
         ? null
         : () async {
             final uri = Uri.tryParse(news.url);
-            if (uri != null && await canLaunchUrl(uri))
+            if (uri != null && await canLaunchUrl(uri)) {
               await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
           },
     borderRadius: BorderRadius.circular(19),
     child: Container(
@@ -2121,9 +2134,10 @@ class StockDetailScreen extends StatelessWidget {
     child: FutureBuilder<Map<String, dynamic>>(
       future: MarketApi.getStockDetail(symbol),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting)
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: _green));
-        if (snapshot.hasError)
+        }
+        if (snapshot.hasError) {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -2145,6 +2159,7 @@ class StockDetailScreen extends StatelessWidget {
               ),
             ),
           );
+        }
         final data = snapshot.data!;
         final report = _asMap(data['report']);
         final technical = _asMap(data['technical']);
@@ -2346,15 +2361,20 @@ String _findMetric(Map<String, dynamic> source, List<String> keys) {
   dynamic find(dynamic value) {
     if (value is Map) {
       for (final entry in value.entries) {
-        if (keys.contains(entry.key.toString()) && entry.value != null)
+        if (keys.contains(entry.key.toString()) && entry.value != null) {
           return entry.value;
+        }
         final nested = find(entry.value);
-        if (nested != null) return nested;
+        if (nested != null) {
+          return nested;
+        }
       }
     } else if (value is List) {
       for (final item in value) {
         final nested = find(item);
-        if (nested != null) return nested;
+        if (nested != null) {
+          return nested;
+        }
       }
     }
     return null;
@@ -2451,7 +2471,8 @@ class _BrokerSummaryCard extends StatelessWidget {
 
       final net = (() {
         if (entry['nval'] != null) return (entry['nval'] as num).toDouble();
-        if (entry['net_idr'] != null) return (entry['net_idr'] as num).toDouble();
+        if (entry['net_idr'] != null)
+          return (entry['net_idr'] as num).toDouble();
         if (entry['net'] != null) return (entry['net'] as num).toDouble();
         return 0.0;
       })();
@@ -2474,7 +2495,8 @@ class _BrokerSummaryCard extends StatelessWidget {
         .toList();
 
     rows.sort(
-      (a, b) => (b['net'] as double).abs().compareTo((a['net'] as double).abs()),
+      (a, b) =>
+          (b['net'] as double).abs().compareTo((a['net'] as double).abs()),
     );
     return rows;
   }

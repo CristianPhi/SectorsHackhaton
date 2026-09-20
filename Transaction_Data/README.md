@@ -32,12 +32,15 @@ SECTORS_API_KEY=a896c0fe5d1d378c437af8cea7870ae34221f90342bdf551a9dec959ec02df7e
 ## Contoh penggunaan
 
 ```ts
-import { getTransactionScreener, getTransactionDetailPage } from './transaction.service';
+import {
+  getTransactionScreener,
+  getTransactionDetailPage,
+} from "./transaction.service";
 
-const stocks = await getTransactionScreener('bank');
+const stocks = await getTransactionScreener("bank");
 console.log(stocks);
 
-const detail = await getTransactionDetailPage('BBCA');
+const detail = await getTransactionDetailPage("BBCA");
 console.log(detail.transactionCount);
 ```
 
