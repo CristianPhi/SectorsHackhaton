@@ -18,20 +18,32 @@ Koneksi ke Sectors API:
 - GET https://api.sectors.app/v2/index-daily/
 - GET https://api.sectors.app/v2/index-daily/{index_code}/
 
-## Key
+## Environment variable
+
+Buat file `.env` di aplikasi pemanggil dan isi API key secara lokal:
 
 ```env
-SECTORS_API_KEY=a896c0fe5d1d378c437af8cea7870ae34221f90342bdf551a9dec959ec02df7e
+SECTORS_API_KEY=your-sectors-api-key
 ```
 
 ## Struktur data utama
 
+- daily-full-universe-close.ts: GET `/close/?limit=20`
+- daily-transaction-data.ts: GET `/daily/{symbol}/`
+- idx-market-summary.ts: GET `/idx-total/`
+- daily-full-universe-index-close.ts: GET `/index-daily/`
+- index-daily-transaction-data.ts: GET `/index-daily/{index_code}/`
 - transaction.types.ts: definisi tipe data transaksi saham
-- transaction.service.ts: fungsi fetch dan normalisasi data
+- transaction.service.ts: client API dan helper normalisasi data
 
 ## Contoh penggunaan
 
 ```ts
+import { getDailyFullUniverseClose } from "./daily-full-universe-close";
+import { getDailyTransactionData } from "./daily-transaction-data";
+import { getIdxMarketSummary } from "./idx-market-summary";
+import { getDailyFullUniverseIndexClose } from "./daily-full-universe-index-close";
+import { getIndexDailyTransactionData } from "./index-daily-transaction-data";
 import {
   getTransactionScreener,
   getTransactionDetailPage,
@@ -41,7 +53,12 @@ const stocks = await getTransactionScreener("bank");
 console.log(stocks);
 
 const detail = await getTransactionDetailPage("BBCA");
-console.log(detail.transactionCount);
+const close = await getDailyFullUniverseClose();
+const daily = await getDailyTransactionData("BBCA");
+const market = await getIdxMarketSummary();
+const indexClose = await getDailyFullUniverseIndexClose();
+const indexDaily = await getIndexDailyTransactionData("COMPOSITE");
+console.log({ close, daily, market, indexClose, indexDaily, stocks, detail });
 ```
 
 ## Catatan
