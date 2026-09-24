@@ -1,0 +1,23 @@
+# Flutter/Dart/Pub
+.dart_tool/
+.packages
+build/
+.pub-cache/
+.pub/
+pubspec.lock
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Generated platform folders (run `flutter create .` to regenerate)
+# Kept out of source control since they are machine generated.
+
+# Misc
+*.log
+.DS_Store
