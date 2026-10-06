@@ -10,12 +10,12 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import * as nodemailer from 'nodemailer';
-import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
-import { User, UserDocument } from './schemas/user.schema';
+import { LoginDto } from './dto/login.dto.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { VerifyEmailDto } from './dto/verify-email.dto.js';
+import { User, UserDocument } from './schemas/user.schema.js';
 
 @Injectable()
 export class AuthService {

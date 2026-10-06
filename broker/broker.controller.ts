@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { BrokerService } from './broker.service';
+import { BrokerService } from './broker.service.js';
 
 @Controller('broker')
 export class BrokerController {

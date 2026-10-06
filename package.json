@@ -1,6 +1,7 @@
 {
   "name": "sectors-hackathon-deployment",
   "private": true,
+  "type": "module",
   "workspaces": [
     "Agentic_AI"
   ],

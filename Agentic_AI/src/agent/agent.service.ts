@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { SectorsService } from '../sectors/sectors.service';
+import { SectorsService } from '../sectors/sectors.service.js';
 import { GoogleGenAI, Type } from '@google/genai';
-import { BrokerService } from '../../../broker/broker.service';
+import { BrokerService } from '../../../broker/broker.service.js';
 
 @Injectable()
 export class AgentService {
