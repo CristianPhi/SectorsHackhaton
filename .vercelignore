@@ -1,0 +1,13 @@
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+.git
+.vercel
+UI/
+Assets/
+Detailed_Reports/
+OpenSource_Video/
+Rankings/
+Transaction_Data/
+sectors-news-backend/

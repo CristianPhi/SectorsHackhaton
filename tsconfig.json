@@ -1,0 +1,23 @@
+{
+  "extends": "./Agentic_AI/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "types": ["node"],
+    "typeRoots": [
+      "./Agentic_AI/node_modules/@types",
+      "./node_modules/@types"
+    ]
+  },
+  "include": [
+    "api/**/*.ts",
+    "Agentic_AI/src/**/*.ts",
+    "broker/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "Agentic_AI/node_modules",
+    "Agentic_AI/dist",
+    "**/*.spec.ts"
+  ]
+}

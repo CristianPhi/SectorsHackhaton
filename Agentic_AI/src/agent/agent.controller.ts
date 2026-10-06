@@ -6,8 +6,11 @@ export class AgentController {
   constructor(private readonly agentService: AgentService) {}
 
   @Post('analyze')
-  async analyzeStock(@Body('prompt') prompt: string) {
-    const result = await this.agentService.analyze(prompt);
-    return { status: 'success', data: result};
+  async analyzeStock(
+    @Body('prompt') prompt: string,
+    @Body('ticker') ticker?: string,
+  ) {
+    const result = await this.agentService.analyze(prompt, ticker);
+    return { status: 'success', data: result };
   }
 }

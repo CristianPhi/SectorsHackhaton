@@ -6,8 +6,23 @@ export class SectorsController {
   constructor(private readonly sectorsService: SectorsService) {}
 
   @Get('market')
-  getMarketSnapshot() {
-    return this.sectorsService.getMarketSnapshot();
+  async getMarketSnapshot() {
+    return this.sectorsService.getLocalStocks();
+  }
+
+  @Get('stocks')
+  async getStocks(@Query('q') q?: string) {
+    return q ? this.sectorsService.searchStocks(q) : this.sectorsService.getLocalStocks();
+  }
+
+  @Get('favorites')
+  async getFavorites() {
+    return this.sectorsService.getFavoriteStocks();
+  }
+
+  @Get('recent')
+  async getRecent() {
+    return this.sectorsService.getRecentlySearched();
   }
 
   @Get('search')
@@ -18,8 +33,7 @@ export class SectorsController {
     @Query('minTransaction') minTransaction?: string,
     @Query('sortBy') sortBy?: 'transaction' | 'valuation' | 'price',
   ) {
-    return this.sectorsService.getScreenerData({
-      q: query ?? '',
+    return this.sectorsService.searchStocks(query ?? '', {
       maxPe: maxPe ? Number(maxPe) : undefined,
       maxPbv: maxPbv ? Number(maxPbv) : undefined,
       minTransaction: minTransaction ? Number(minTransaction) : undefined,
@@ -70,7 +84,7 @@ export class SectorsController {
   }
 
   @Get('stocks/:symbol')
-  getStockDetail(@Param('symbol') symbol: string) {
+  async getStockDetail(@Param('symbol') symbol: string) {
     return this.sectorsService.getStockDetail(symbol);
   }
 

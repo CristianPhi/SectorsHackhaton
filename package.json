@@ -1,0 +1,31 @@
+{
+  "name": "sectors-hackathon-deployment",
+  "private": true,
+  "workspaces": [
+    "Agentic_AI"
+  ],
+  "scripts": {
+    "build": "npm --workspace Agentic_AI run build"
+  },
+  "dependencies": {
+    "@google/genai": "^2.23.0",
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/config": "^12.0.0",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/mongoose": "^12.0.0",
+    "@nestjs/platform-express": "^12.0.1",
+    "axios": "^1.20.0",
+    "bcryptjs": "^3.0.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "dotenv": "^18.0.0",
+    "mongoose": "^9.10.1",
+    "nodemailer": "^10.0.10",
+    "openai": "^7.19.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}

@@ -8,8 +8,10 @@ import { AgentController } from './agent/agent.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from './auth/auth.module';
 import { SectorsController } from './sectors/sectors.controller';
-import { BrokerController } from '@broker/broker.controller';
-import { BrokerService } from '@broker/broker.service';
+import { BrokerController } from '../../broker/broker.controller';
+import { BrokerService } from '../../broker/broker.service';
+import { ApiNewsController, LearnController } from './learn/learn.controller';
+import { LearnService } from './learn/learn.service';
 
 @Module({
   imports: [
@@ -28,7 +30,7 @@ import { BrokerService } from '@broker/broker.service';
     }),
     AuthModule,
   ],
-  controllers: [AppController, AgentController, SectorsController, BrokerController],
-  providers: [AppService, SectorsService, BrokerService, AgentService],
+  controllers: [AppController, AgentController, SectorsController, BrokerController, LearnController, ApiNewsController],
+  providers: [AppService, SectorsService, BrokerService, AgentService, LearnService],
 })
 export class AppModule {}

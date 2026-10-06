@@ -1,19 +1,13 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { AgentService } from './agent/agent.service';
+import { Controller, Get } from '@nestjs/common';
 
-@Controller('agent')
+@Controller()
 export class AppController {
-  constructor(private readonly agentService: AgentService) {}
-
-  @Get('analyze')
-  async runAnalysis(@Query('prompt') prompt: string) {
-    const result = await this.agentService.analyze(prompt || 'Analisa saham BBCA');
-    
-    console.log(result); 
-
+  @Get('health')
+  getHealth() {
     return {
-      success: true,
-      data: result,
+      status: 'ok',
+      service: 'Agentic_AI',
+      timestamp: new Date().toISOString(),
     };
   }
 }

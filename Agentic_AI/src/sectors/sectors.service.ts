@@ -1,5 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 
 export type CompanyValuationInput = {
   price?: number | null;
@@ -24,6 +24,8 @@ export type ScreenerStockRow = {
 @Injectable()
 export class SectorsService {
   private readonly baseUrl = 'https://api.sectors.app/v2';
+  private readonly responseCache = new Map<string, { data: unknown; expiresAt: number }>();
+  private readonly pendingRequests = new Map<string, Promise<unknown>>();
   private readonly watchlist = [
     { symbol: 'BBCA', name: 'Bank Central Asia' },
     { symbol: 'TLKM', name: 'Telkom Indonesia' },
@@ -37,33 +39,37 @@ export class SectorsService {
 
   async screenCompanies(whereQuery: string, orderBy: string){
     try{
-      const res = await axios.get(`${this.baseUrl}/companies/`, {
+      const data = await this.getSectorsData<Record<string, unknown>>(`${this.baseUrl}/companies/`, {
         headers: this.headers,
         params: { where: whereQuery, order_by: orderBy, limit: 5},
       });
-      return JSON.stringify(res.data);
-    }catch (err){
-      return JSON.stringify({ error: (err as Error).message });
+      return JSON.stringify(data);
+    } catch (error) {
+      return JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   }
   async getCompanyOverview(symbol: string){
     try{
       const cleanSymbol = symbol.toUpperCase().replace('.JK','');
-      const res = await axios.get(`${this.baseUrl}/company/report/${cleanSymbol}/`, {
-        headers: this.headers,
-      });
-      return JSON.stringify(res.data);
+      return JSON.stringify(await this.fetchCompanyReport(cleanSymbol));
     } catch (err){
       return JSON.stringify({ error: (err as Error).message });
     }
   }
 
   async getTechnicalIndicators(symbol: string) {
+    if (!process.env.SECTORS_API_KEY) {
+      return {
+        symbol: symbol.toUpperCase(),
+        note: 'Data teknikal dibatasi karena API key Sectors belum aktif. Gunakan analisis lokal untuk screening awal.',
+        indicators: {},
+      };
+    }
+
     try {
-      const response = await axios.get(`https://api.sectors.app/v2/indonesia/technicals/${symbol}`, {
+      return await this.getSectorsData(`https://api.sectors.app/v2/indonesia/technicals/${symbol}`, {
         headers: { Authorization: `Bearer ${process.env.SECTORS_API_KEY}` }
       });
-      return response.data;
     } catch (error) {
       return { error: `Gagal mengambil data teknikal untuk ${symbol}` };
     }
@@ -78,12 +84,12 @@ export class SectorsService {
       Promise.all(
       this.watchlist.map(async (stock) => {
         try {
-          const response = await axios.get(`${this.baseUrl}/daily/${stock.symbol}/`, {
+          const prices = await this.getSectorsData<Record<string, any>[]>(`${this.baseUrl}/daily/${stock.symbol}/`, {
             headers: this.headers,
           });
-          const prices = Array.isArray(response.data) ? response.data : [];
-          const latest = prices.at(-1);
-          const previous = prices.at(-2);
+          const dailyRows = Array.isArray(prices) ? prices : [];
+          const latest = dailyRows.at(-1);
+          const previous = dailyRows.at(-2);
           const change = latest && previous && previous.close
             ? (latest.close - previous.close) / previous.close
             : 0;
@@ -103,6 +109,69 @@ export class SectorsService {
     ]);
 
     return { data: results, ihsg: index, source: 'Sectors Financial API' };
+  }
+
+  async getLocalStocks() {
+    if (!process.env.SECTORS_API_KEY) {
+      throw new ServiceUnavailableException('SECTORS_API_KEY belum diatur di file .env');
+    }
+    const stocks = await this.getCompanies('');
+    return stocks.map((stock) => this.toClientStock(stock));
+  }
+
+  async searchStocks(query = '', filters: {
+    maxPe?: number;
+    maxPbv?: number;
+    minTransaction?: number;
+    sortBy?: 'transaction' | 'valuation' | 'price';
+  } = {}) {
+    if (!process.env.SECTORS_API_KEY) {
+      throw new ServiceUnavailableException('SECTORS_API_KEY belum diatur di file .env');
+    }
+
+    const q = query.trim();
+    const stocks = await this.getCompanies(q);
+
+    const filtered = stocks.filter((stock: { symbol: string; name: string; price: number | null; change: number | null }) => {
+      if (!q) return true;
+      const symbol = String(stock.symbol ?? '').toLowerCase();
+      const name = String(stock.name ?? '').toLowerCase();
+      return symbol.includes(q.toLowerCase()) || name.includes(q.toLowerCase());
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (filters.sortBy === 'price') {
+        return (b.price ?? 0) - (a.price ?? 0);
+      }
+      return (b.change ?? 0) - (a.change ?? 0);
+    });
+
+    return sorted.map((stock) => this.toClientStock(stock));
+  }
+
+  async getFavoriteStocks() {
+    if (!process.env.SECTORS_API_KEY) {
+      throw new ServiceUnavailableException('SECTORS_API_KEY belum diatur di file .env');
+    }
+
+    const favorites = ['BBCA', 'TLKM', 'BBRI', 'BMRI'];
+    const stocks = await this.getCompanies('');
+    return stocks
+      .filter((stock) => favorites.includes(stock.symbol))
+      .map((stock) => this.toClientStock(stock));
+  }
+
+  async getRecentlySearched() {
+    if (!process.env.SECTORS_API_KEY) {
+      throw new ServiceUnavailableException('SECTORS_API_KEY belum diatur di file .env');
+    }
+
+    const order = ['BBRI', 'BMRI', 'BBCA', 'TLKM'];
+    const stocks = await this.getCompanies('');
+    return order
+      .map((ticker) => stocks.find((stock) => stock.symbol === ticker))
+      .filter((stock): stock is { symbol: string; name: string; price: number | null; change: number | null } => Boolean(stock))
+      .map((stock) => this.toClientStock(stock));
   }
 
   async getSearchData(query = '') {
@@ -274,26 +343,120 @@ export class SectorsService {
     if (!process.env.SECTORS_API_KEY) {
       throw new ServiceUnavailableException('SECTORS_API_KEY belum diatur di file .env');
     }
+
     const cleanSymbol = symbol.toUpperCase().replace('.JK', '');
     const [daily, report, technical] = await Promise.allSettled([
-      axios.get(`${this.baseUrl}/daily/${cleanSymbol}/`, { headers: this.headers }),
-      axios.get(`${this.baseUrl}/company/report/${cleanSymbol}/`, { headers: this.headers }),
-      axios.get(`${this.baseUrl}/indonesia/technicals/${cleanSymbol}`, { headers: this.headers }),
+      this.getSectorsData<unknown>(`${this.baseUrl}/daily/${cleanSymbol}/`, { headers: this.headers }),
+      this.fetchCompanyReport(cleanSymbol),
+      this.getSectorsData<unknown>(`${this.baseUrl}/indonesia/technicals/${cleanSymbol}`, { headers: this.headers }),
     ]);
-    const dailyData = daily.status === 'fulfilled' ? daily.value.data : [];
-    const reportData = report.status === 'fulfilled' ? report.value.data : { error: 'Report fundamental tidak tersedia dari Sectors API' };
-    const technicalData = technical.status === 'fulfilled' ? technical.value.data : { error: 'Data technical tidak tersedia dari Sectors API' };
+
+    const dailyData = daily.status === 'fulfilled' ? daily.value : [];
+    const reportData = report.status === 'fulfilled' ? report.value : {};
+    let technicalData = technical.status === 'fulfilled' ? technical.value : {};
+    if (technical.status === 'rejected') {
+      try {
+        technicalData = await this.getSectorsData<unknown>(`${this.baseUrl}/technicals/${cleanSymbol}/`, {
+          headers: this.headers,
+        });
+      } catch {
+        technicalData = {};
+      }
+    }
+    const technicalIndicators = (technicalData as { indicators?: unknown } | null)?.indicators;
     const prices = Array.isArray(dailyData) ? dailyData : [];
     const latest = prices.at(-1);
     const previous = prices.at(-2);
+    const price = latest?.close ?? null;
+    const changePct = latest && previous?.close ? ((latest.close - previous.close) / previous.close) * 100 : null;
+    const sparkline = prices.slice(-14).map((row: any) => Number(row.close ?? row.price ?? 0)).filter((value) => Number.isFinite(value));
+
+    const overview = reportData && typeof reportData === 'object' && 'overview' in reportData && reportData.overview && typeof reportData.overview === 'object'
+      ? (reportData.overview as Record<string, any>)
+      : {};
+    const valuation = reportData && typeof reportData === 'object' && 'valuation' in reportData && reportData.valuation && typeof reportData.valuation === 'object'
+      ? (reportData.valuation as Record<string, any>)
+      : {};
+
+    const marketCap = Number(
+      reportData?.market_cap ??
+      reportData?.marketCap ??
+      overview?.market_cap ??
+      overview?.marketCap ??
+      0,
+    );
+
+    const fallbackTechnical = [
+      {
+        name: 'Trend',
+        value: changePct == null ? 'N/A' : (changePct >= 0 ? 'Uptrend' : 'Downtrend'),
+        interpretation: changePct == null
+          ? 'Data pergerakan tidak tersedia.'
+          : `${changePct >= 0 ? 'Harga menguat' : 'Harga melemah'} ${Math.abs(changePct).toFixed(2)}% dalam periode terakhir.`,
+        signal: changePct == null ? 'netral' : changePct >= 0 ? 'bullish' : 'bearish',
+      },
+      {
+        name: 'Range',
+        value: sparkline.length > 1 ? `${Math.min(...sparkline).toFixed(0)} - ${Math.max(...sparkline).toFixed(0)}` : 'N/A',
+        interpretation: 'Rentang harga terakhir menunjukkan volatilitas pasar yang sedang terjadi.',
+        signal: 'netral',
+      },
+      {
+        name: 'Momentum',
+        value: price == null ? 'N/A' : `Rp ${Number(price).toLocaleString('id-ID')}`,
+        interpretation: 'Harga terakhir menjadi referensi momentum saham saat ini.',
+        signal: changePct != null && changePct >= 0 ? 'bullish' : 'bearish',
+      },
+    ];
+
+    const fallbackFundamental = [
+      {
+        name: 'Market Cap',
+        value: marketCap > 0 ? `Rp ${Number(marketCap).toLocaleString('id-ID')}` : 'N/A',
+        interpretation: 'Kapitalisasi pasar perusahaan pada pasar saat ini.',
+        signal: marketCap > 0 ? 'bullish' : 'netral',
+      },
+      {
+        name: 'Sector',
+        value: String(reportData?.sector ?? overview?.sector ?? 'Sektor utama'),
+        interpretation: 'Sektor utama perusahaan sebagai konteks industri.',
+        signal: 'netral',
+      },
+      {
+        name: 'P/B',
+        value: valuation?.pb ?? valuation?.pbv ?? valuation?.pb_mrq ?? 'N/A',
+        interpretation: 'Rasio nilai buku relatif terhadap harga saham.',
+        signal: 'netral',
+      },
+    ];
+
+    const description = `Saham ${cleanSymbol} ditampilkan berdasarkan data real-time dari Sectors API, mencerminkan pergerakan harga harian, indikator teknikal, dan laporan fundamental terbaru.`;
+
     return {
-      symbol: cleanSymbol,
-      price: latest?.close ?? null,
-      change: latest && previous?.close ? (latest.close - previous.close) / previous.close : null,
-      date: latest?.date ?? null,
-      history: prices.slice(-30),
-      report: reportData,
-      technical: technicalData,
+      stock: {
+        ticker: cleanSymbol,
+        name: String(reportData?.company_name ?? reportData?.name ?? overview?.company_name ?? cleanSymbol),
+        sector: String(reportData?.sector ?? overview?.sector ?? overview?.industry ?? 'Sektor utama'),
+        price: Number(price ?? 0),
+        changePercent: Number(changePct ?? 0),
+        changeAbsolute: Number(price != null && changePct != null ? price * (changePct / 100) : 0),
+      },
+      description,
+      marketCap: Number(marketCap ?? 0),
+      dayHigh: Number(sparkline.length > 0 ? Math.max(...sparkline) : price ?? 0),
+      dayLow: Number(sparkline.length > 0 ? Math.min(...sparkline) : price ?? 0),
+      sparkline,
+      teknikal: Array.isArray(technicalIndicators)
+        ? technicalIndicators.slice(0, 3)
+        : Array.isArray(technicalData)
+          ? technicalData.slice(0, 3)
+          : fallbackTechnical,
+      fundamental: Array.isArray(reportData?.metrics)
+        ? reportData.metrics.slice(0, 3)
+        : Array.isArray(reportData?.financials)
+          ? reportData.financials.slice(0, 3)
+          : fallbackFundamental,
+      berita: Array.isArray(reportData?.news) ? reportData.news.slice(0, 3) : [],
       source: 'Sectors Financial API',
     };
   }
@@ -304,22 +467,22 @@ export class SectorsService {
     return { symbol: cleanSymbol, ...quote, source: 'Sectors Financial API' };
   }
 
-  private async getCompanies(query: string) {
+  private async getCompanies(query: string): Promise<Array<{ symbol: string; name: string; price: number | null; change: number | null }>> {
     const rows: Record<string, unknown>[] = [];
-    const pageSize = 200;
+    const pageSize = query.trim() ? 20 : 50;
     let offset = 0;
     let hasNext = true;
 
-    while (hasNext && rows.length < 1200) {
-      const response = await axios.get(`${this.baseUrl}/companies/`, {
+    while (hasNext && rows.length < pageSize) {
+      const data = await this.getSectorsData<Record<string, any>>(`${this.baseUrl}/companies/`, {
         headers: this.headers,
         params: query.trim()
           ? { q: query.trim(), limit: pageSize, offset }
           : { order_by: 'symbol', limit: pageSize, offset },
       });
-      const page = Array.isArray(response.data?.results) ? response.data.results : [];
+      const page = Array.isArray(data?.results) ? data.results as Record<string, unknown>[] : [];
       rows.push(...page);
-      hasNext = response.data?.pagination?.has_next === true && page.length > 0;
+      hasNext = data?.pagination?.has_next === true && page.length > 0;
       offset += pageSize;
       if (query.trim()) break;
     }
@@ -327,14 +490,38 @@ export class SectorsService {
     return Promise.all(rows.map(async (row: Record<string, unknown>) => {
       const symbol = String(row.symbol ?? '').replace('.JK', '');
       const latest = await this.getLatestDaily(symbol);
-      return { symbol, name: row.company_name ?? row.name ?? 'Unknown company', price: latest.price, change: latest.change };
+      const companyName = typeof row.company_name === 'string'
+        ? row.company_name
+        : typeof row.name === 'string'
+          ? row.name
+          : 'Unknown company';
+
+      return {
+        symbol,
+        name: companyName,
+        price: latest.price,
+        change: latest.change,
+      };
     }));
+  }
+
+  private toClientStock(stock: { symbol: string; name: string; price: number | null; change: number | null }) {
+    const price = Number(stock.price ?? 0);
+    const change = Number(stock.change ?? 0);
+    return {
+      ticker: stock.symbol,
+      name: stock.name,
+      sector: 'IDX',
+      price: Number.isFinite(price) ? price : 0,
+      changePercent: Number.isFinite(change) ? change * 100 : 0,
+      changeAbsolute: Number.isFinite(price * change) ? price * change : 0,
+    };
   }
 
   private async getLatestDaily(symbol: string) {
     try {
-      const response = await axios.get(`${this.baseUrl}/daily/${symbol}/`, { headers: this.headers });
-      const prices = Array.isArray(response.data) ? response.data : [];
+      const data = await this.getSectorsData<unknown>(`${this.baseUrl}/daily/${symbol}/`, { headers: this.headers });
+      const prices = Array.isArray(data) ? data : [];
       const latest = prices.at(-1);
       const previous = prices.at(-2);
       return {
@@ -348,8 +535,8 @@ export class SectorsService {
 
   private async getDailyHistory(symbol: string) {
     try {
-      const response = await axios.get(`${this.baseUrl}/daily/${symbol}/`, { headers: this.headers });
-      return Array.isArray(response.data) ? response.data : [];
+      const data = await this.getSectorsData<unknown>(`${this.baseUrl}/daily/${symbol}/`, { headers: this.headers });
+      return Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
     } catch {
       return [];
     }
@@ -389,8 +576,8 @@ export class SectorsService {
 
   private async getLatestMetric(symbol: string, field: 'volume' | 'value'): Promise<number | null> {
     try {
-      const response = await axios.get(`${this.baseUrl}/daily/${symbol}/`, { headers: this.headers });
-      const rows = Array.isArray(response.data) ? response.data : [];
+      const data = await this.getSectorsData<unknown>(`${this.baseUrl}/daily/${symbol}/`, { headers: this.headers });
+      const rows = Array.isArray(data) ? data : [];
       const latest = rows.at(-1) as Record<string, unknown> | undefined;
       if (!latest) return null;
       const value = Number(latest[field]);
@@ -402,11 +589,66 @@ export class SectorsService {
 
   private async getCompanyReport(symbol: string): Promise<Record<string, unknown>> {
     try {
-      const response = await axios.get(`${this.baseUrl}/company/report/${symbol}/`, { headers: this.headers });
-      return response.data && typeof response.data === 'object' ? (response.data as Record<string, unknown>) : {};
-    } catch {
+      return await this.fetchCompanyReport(symbol);
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 429) {
+        console.warn(`Sectors rate limit reached for ${symbol}; returning empty report payload to prevent cascading failures.`);
+      }
       return {};
     }
+  }
+
+  private async fetchCompanyReport(symbol: string): Promise<Record<string, unknown>> {
+    const data = await this.getSectorsData<unknown>(`${this.baseUrl}/company/report/${symbol}/`, {
+      headers: this.headers,
+    });
+    return data && typeof data === 'object' ? data as Record<string, unknown> : {};
+  }
+
+  private async getSectorsData<T>(url: string, options: AxiosRequestConfig = {}): Promise<T> {
+    const params = options.params && typeof options.params === 'object'
+      ? Object.fromEntries(
+        Object.entries(options.params as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)),
+      )
+      : options.params ?? null;
+    const cacheKey = JSON.stringify([url, params]);
+    const cached = this.responseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data as T;
+    }
+    if (cached) {
+      this.responseCache.delete(cacheKey);
+    }
+
+    const pending = this.pendingRequests.get(cacheKey);
+    if (pending) {
+      return pending as Promise<T>;
+    }
+
+    const request = axios.get<T>(url, options)
+      .then((response) => {
+        if (this.responseCache.size >= 500) {
+          const oldestKey = this.responseCache.keys().next().value;
+          if (oldestKey) this.responseCache.delete(oldestKey);
+        }
+        this.responseCache.set(cacheKey, {
+          data: response.data,
+          expiresAt: Date.now() + this.getCacheTtl(url),
+        });
+        return response.data;
+      })
+      .finally(() => this.pendingRequests.delete(cacheKey));
+
+    this.pendingRequests.set(cacheKey, request);
+    return request;
+  }
+
+  private getCacheTtl(url: string): number {
+    if (url.includes('/company/report/')) return 6 * 60 * 60 * 1000;
+    if (url.includes('/daily/') || url.includes('/index-daily/') || url.includes('/most-traded/')) {
+      return 5 * 60 * 1000;
+    }
+    return 60 * 60 * 1000;
   }
 
   private extractReportNumber(report: Record<string, unknown>, keys: string[]): number | null {
@@ -422,13 +664,13 @@ export class SectorsService {
   }
 
   private async getMostTraded() {
-    const response = await axios.get(`${this.baseUrl}/most-traded/`, {
+    const data = await this.getSectorsData<Record<string, any>>(`${this.baseUrl}/most-traded/`, {
       headers: this.headers,
       params: { n_stock: 10 },
     });
-    const dates = Object.keys(response.data ?? {}).sort();
+    const dates = Object.keys(data ?? {}).sort();
     const latest = dates.at(-1);
-    const rows = latest ? response.data[latest] : [];
+    const rows = latest ? data[latest] : [];
     return (Array.isArray(rows) ? rows : []).map((row: Record<string, unknown>) => ({
       symbol: String(row.symbol ?? '').replace('.JK', ''),
       name: row.company_name ?? 'Unknown company',
@@ -442,10 +684,10 @@ export class SectorsService {
     const names = ['Gold', 'Coal', 'Nickel', 'Copper'];
     return Promise.all(names.map(async (name) => {
       try {
-        const response = await axios.get(`${this.baseUrl}/mining/commodities/${name}/price/`, {
+        const data = await this.getSectorsData<unknown>(`${this.baseUrl}/mining/commodities/${name}/price/`, {
           headers: this.headers,
         });
-        const rows = Array.isArray(response.data) ? response.data : [];
+        const rows = Array.isArray(data) ? data : [];
         const latest = rows.at(-1);
         return { name, price: latest?.price_usd_per_ton ?? null, date: latest?.date ?? null };
       } catch {
@@ -456,10 +698,10 @@ export class SectorsService {
 
   private async getIndexSnapshot() {
     try {
-      const response = await axios.get(`${this.baseUrl}/index-daily/ihsg/`, {
+      const data = await this.getSectorsData<unknown>(`${this.baseUrl}/index-daily/ihsg/`, {
         headers: this.headers,
       });
-      const prices = Array.isArray(response.data) ? response.data : [];
+      const prices = Array.isArray(data) ? data : [];
       const latest = prices.at(-1);
       const previous = prices.at(-2);
       const change = latest && previous && previous.price

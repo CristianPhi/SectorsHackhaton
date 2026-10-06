@@ -1,10 +1,33 @@
-import axios from 'axios';
-
 const BASE_URL = 'https://api.sectors.app/v2';
 
-const getHeaders = () => ({
-  Authorization: process.env.SECTORS_API_KEY || '',
-});
+export type SectorsApiOptions = {
+  apiKey?: string;
+};
+
+function getApiKey(options: SectorsApiOptions = {}) {
+  const environment = (globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  }).process?.env;
+  const apiKey = options.apiKey ?? environment?.SECTORS_API_KEY;
+  if (!apiKey) {
+    throw new Error('SECTORS_API_KEY belum diatur di environment');
+  }
+
+  return apiKey;
+}
+
+async function getSectorsData<T>(path: string, options: SectorsApiOptions = {}) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'GET',
+    headers: { Authorization: getApiKey(options) },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Sectors API request failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json() as Promise<T>;
+}
 
 type DailyRecord = {
   date?: string | null;
@@ -43,14 +66,43 @@ function normalizeTransactionCount(record: DailyRecord | null | undefined): numb
   return null;
 }
 
-export async function getTransactionOverview(symbol: string) {
+export async function getDailyFullUniverseClose(options: SectorsApiOptions = {}) {
+  return getSectorsData('/close/?limit=20', options);
+}
+
+export async function getDailyTransactionData(
+  symbol: string,
+  options: SectorsApiOptions = {},
+) {
   const cleanSymbol = symbol.toUpperCase().replace('.JK', '');
+  return getSectorsData<DailyRecord[]>(`/daily/${encodeURIComponent(cleanSymbol)}/`, options);
+}
 
-  const response = await axios.get(`${BASE_URL}/daily/${cleanSymbol}/`, {
-    headers: getHeaders(),
-  });
+export async function getIdxMarketSummary(options: SectorsApiOptions = {}) {
+  return getSectorsData('/idx-total/', options);
+}
 
-  const history = Array.isArray(response.data) ? response.data as DailyRecord[] : [];
+export async function getDailyFullUniverseIndexClose(options: SectorsApiOptions = {}) {
+  return getSectorsData('/index-daily/', options);
+}
+
+export async function getIndexDailyTransactionData(
+  indexCode: string,
+  options: SectorsApiOptions = {},
+) {
+  return getSectorsData(
+    `/index-daily/${encodeURIComponent(indexCode)}/`,
+    options,
+  );
+}
+
+export async function getTransactionOverview(
+  symbol: string,
+  options: SectorsApiOptions = {},
+) {
+  const cleanSymbol = symbol.toUpperCase().replace('.JK', '');
+  const data = await getDailyTransactionData(cleanSymbol, options);
+  const history = Array.isArray(data) ? data : [];
   const latest = history.at(-1) ?? null;
   const previous = history.at(-2) ?? null;
 
@@ -60,7 +112,9 @@ export async function getTransactionOverview(symbol: string) {
   return {
     symbol: cleanSymbol,
     price: latest?.close ?? null,
-    change: latest && previous?.close ? (latest.close - previous.close) / previous.close : null,
+    change: latest?.close != null && previous?.close != null
+      ? (latest.close - previous.close) / previous.close
+      : null,
     latestDate: latest?.date ?? null,
     transactionCount,
     previousTransactionCount,
@@ -71,25 +125,28 @@ export async function getTransactionOverview(symbol: string) {
   };
 }
 
-export async function getTransactionScreener(query = '') {
-  const response = await axios.get(`${BASE_URL}/companies/`, {
-    headers: getHeaders(),
-    params: query.trim()
-      ? { q: query.trim(), limit: 50 }
-      : { order_by: 'symbol', limit: 50 },
-  });
-
-  const rows = Array.isArray(response.data?.results)
-    ? (response.data.results as Array<{ symbol?: string; company_name?: string; name?: string }>)
-    : [];
+export async function getTransactionScreener(
+  query = '',
+  options: SectorsApiOptions = {},
+) {
+  const data = await getDailyFullUniverseClose(options);
+  const rows = Array.isArray(data)
+    ? data as Array<{ symbol?: string; company_name?: string; name?: string }>
+    : Array.isArray((data as { results?: unknown })?.results)
+      ? (data as { results: Array<{ symbol?: string; company_name?: string; name?: string }> }).results
+      : [];
+  const normalizedQuery = query.trim().toUpperCase();
+  const filteredRows = normalizedQuery
+    ? rows.filter((row) => String(row.symbol ?? '').toUpperCase().includes(normalizedQuery))
+    : rows;
 
   const enriched = await Promise.all(
-    rows.map(async (row) => {
+    filteredRows.map(async (row) => {
       const symbol = String(row.symbol ?? '').replace('.JK', '');
       if (!symbol) return null;
 
       try {
-        const detail = await getTransactionOverview(symbol);
+        const detail = await getTransactionOverview(symbol, options);
         return {
           symbol,
           name: row.company_name ?? row.name ?? 'Unknown company',
@@ -116,8 +173,11 @@ export async function getTransactionScreener(query = '') {
   return enriched.filter(Boolean);
 }
 
-export async function getTransactionDetailPage(symbol: string) {
-  const detail = await getTransactionOverview(symbol);
+export async function getTransactionDetailPage(
+  symbol: string,
+  options: SectorsApiOptions = {},
+) {
+  const detail = await getTransactionOverview(symbol, options);
 
   return {
     ...detail,

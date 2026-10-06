@@ -1,7 +1,10 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -12,8 +15,66 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  @Post('resend-verification')
+  resendVerification(@Body('email') email: string) {
+    return this.authService.resendVerificationEmail(email);
+  }
+
+  @Post('verify-email')
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto);
+  }
+
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('check-username')
+  checkUsername(@Body('username') username: string) {
+    return this.authService.checkUsernameAvailability(username);
+  }
+
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
+  }
+
+  @Get('user/:userId')
+  getUser(@Param('userId') userId: string) {
+    return this.authService.getUserById(userId);
+  }
+
+  @Get('watchlist/:userId')
+  getWatchlist(@Param('userId') userId: string) {
+    return this.authService.getWatchlist(userId);
+  }
+
+  @Post('watchlist/:userId')
+  addWatchlist(@Param('userId') userId: string, @Body('ticker') ticker: string) {
+    return this.authService.addToWatchlist(userId, ticker);
+  }
+
+  @Post('watchlist/:userId/remove')
+  removeWatchlist(@Param('userId') userId: string, @Body('ticker') ticker: string) {
+    return this.authService.removeFromWatchlist(userId, ticker);
+  }
+
+  @Get('chat-history/:userId')
+  getChatHistory(@Param('userId') userId: string) {
+    return this.authService.getChatHistory(userId);
+  }
+
+  @Post('chat-history/:userId')
+  addChatHistory(
+    @Param('userId') userId: string,
+    @Body() body: { prompt: string; response: string },
+  ) {
+    return this.authService.addChatHistory(userId, body.prompt, body.response);
   }
 }
